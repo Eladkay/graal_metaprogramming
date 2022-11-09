@@ -5,11 +5,11 @@ import org.graalvm.compiler.nodes.ValueNode;
 import jdk.vm.ci.meta.MetaUtil;
 
 public class SourcePosTool {
-    static int getBCI(ValueNode node) {
+    public static int getBCI(ValueNode node) {
         return node.getNodeSourcePosition().getBCI();
     }
 
-    static String getLocation(ValueNode node) {
+    public static String getLocation(ValueNode node) {
         return MetaUtil.toLocation(getMethod(node), getBCI(node));
     }
 

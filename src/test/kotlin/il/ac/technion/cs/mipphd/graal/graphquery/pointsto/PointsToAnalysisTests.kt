@@ -1,10 +1,14 @@
 package il.ac.technion.cs.mipphd.graal.graphquery
 
+import il.ac.technion.cs.mipphd.graal.SourcePosTool
 import il.ac.technion.cs.mipphd.graal.graphquery.pointsto.PointsToAnalysis
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
+import org.graalvm.compiler.nodes.FixedNode
+import org.graalvm.compiler.nodes.ValueNode
 import org.junit.jupiter.api.Test
 import java.io.StringWriter
+import javax.xml.transform.Source
 import kotlin.properties.Delegates
 import kotlin.reflect.jvm.javaMethod
 
@@ -305,6 +309,22 @@ class PointsToAnalysisTests {
         val writer = StringWriter()
         adapter.exportQuery(writer)
         println(writer.toString())
+        println()
+    }
+
+    @Test
+    fun `get positions from graal graphs for addRangeToBinTree`() {
+        val methodToGraph = MethodToGraph()
+        val graph = methodToGraph.getCFG(::binTreeCycle.javaMethod)
+        val adapter = GraalAdapter.fromGraal(graph)
+        adapter.vertexSet().map { it.node }.groupBy { it.javaClass }.map { it.value.first() }
+            .filterIsInstance<ValueNode>().forEach {
+            try {
+                println("$it: ${SourcePosTool.getStackTraceElement(it)}")
+            } catch(e: Exception) {
+                //println("$it: ${e.message}")
+            }
+        }
         println()
     }
 

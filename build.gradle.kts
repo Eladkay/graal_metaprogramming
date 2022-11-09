@@ -16,8 +16,8 @@ val graalVersion = "22.3.0"
 val jgraphtVersion = "1.5.1"
 val junitVersion = "5.9.0"
 
-val apronLocation = "/home/mip/phd/repos/apron/prefix"
-val elinaLocation = "/home/mip/phd/repos/ELINA"
+val apronLocation = "/Users/kinsbruner/IdeaProjects/graal_metaprogramming/apron-0.9.13/"
+val elinaLocation = "/Users/kinsbruner/repos/ELINA"
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
