@@ -1,32 +1,36 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
-import il.ac.technion.cs.mipphd.graal.SourcePosTool
 import il.ac.technion.cs.mipphd.graal.graphquery.QueryExecutor
 import il.ac.technion.cs.mipphd.graal.graphquery.WholeMatchQuery
 import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
-import org.graalvm.compiler.nodes.FixedNode
-import org.graalvm.compiler.nodes.ValueNode
 import org.graalvm.compiler.nodes.java.LoadFieldNode
-import org.graalvm.compiler.nodes.java.StoreFieldNode
 import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode
 import org.jgrapht.nio.Attribute
 import org.jgrapht.nio.DefaultAttribute
 import org.jgrapht.nio.dot.DOTExporter
-import org.junit.platform.engine.support.hierarchical.Node
+import java.awt.Point
 import java.io.StringWriter
 import java.lang.reflect.Method
 
-class PointsToResult(
-    val correspondingAllocatedObjects: MutableSet<NodeWrapper> = mutableSetOf(),
-    val storedValues: MutableSet<NodeWrapper> = mutableSetOf(),
-    var commitAllocationAssociation: NodeWrapper? = null
-)
+class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity) :
+    QueryExecutor<StoreFieldInformation>(graal, { StoreFieldInformation() }) {
 
-class PointsToAnalysis(graal: GraalAdapter, val summaryFunc: SummaryKeyFunction) :
-    QueryExecutor<PointsToResult>(graal, { PointsToResult() }) {
+    private val summaries = mutableMapOf<Any, PointsToNode>()
+    private val associations = mutableMapOf<NodeWrapper, PointsToNode>()
+    private fun getNode(nodeWrapper: NodeWrapper): NodeWrapper {
+        assert(nodeWrapper.node != null)
+        if(nodeWrapper.node !is AllocatedObjectNode) return nodeWrapper
+        val ret = summaries.getOrPut(summaryFunc.getSummaryKey(nodeWrapper)) {
+            PointsToNode(summaryFunc.getSummaryKey(nodeWrapper), nodeWrapper.node.id)
+        }
+        ret.representing.add(nodeWrapper)
+        associations[nodeWrapper] = ret
+        return ret
+    }
+
     companion object {
         private val methodToGraph = MethodToGraph()
         val NOP_NODES = listOf(
@@ -68,16 +72,13 @@ class PointsToAnalysis(graal: GraalAdapter, val summaryFunc: SummaryKeyFunction)
 
         private fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
             val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
-                val node = v.node
-                val suffix =
-                    "" // if (node is ValueNode) " (${SourcePosTool.getStackTraceElement(node)})" else "" // todo throws exception?
-                v.node.id.toString() + suffix
+                v.node?.id?.toString() ?: (v as PointsToNode).stolenId.toString()
             }
 
             exporter.setVertexAttributeProvider { v: NodeWrapper ->
                 val attrs: MutableMap<String, Attribute> =
                     HashMap()
-                attrs["label"] = DefaultAttribute.createAttribute(v.node.toString())
+                attrs["label"] = DefaultAttribute.createAttribute(v.toString())
                 attrs
             }
 
@@ -105,11 +106,9 @@ digraph G {
 }
 """
     ) { captureGroups: Map<String, List<NodeWrapper>> ->
-        if (state[captureGroups["store"]!!.first()] != null)
-            state[captureGroups["store"]!!.first()]!!.storedValues.addAll(captureGroups["value"]!!).let { }
-        else
-            state[captureGroups["store"]!!.first()] =
-                PointsToResult(mutableSetOf(), captureGroups["value"]!!.toMutableSet())
+        val storeNode = captureGroups["store"]!!.first()
+        val equivNode = getNode(storeNode)
+        state.getOrPut(equivNode) { StoreFieldInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getNode))
     }
     val assocQuery by WholeMatchQuery(
         """
@@ -123,31 +122,24 @@ digraph G {
 }
 """
     ) { captureGroups: Map<String, List<NodeWrapper>> ->
-        if (state[captureGroups["store"]!!.first()] != null)
-            state[captureGroups["store"]!!.first()]!!.correspondingAllocatedObjects.addAll(
-                captureGroups["value"] ?: mutableSetOf()
-            )
-        else
-            state[captureGroups["store"]!!.first()] =
-                PointsToResult(captureGroups["value"]?.toMutableSet() ?: mutableSetOf(), mutableSetOf())
+        val storeNode = captureGroups["store"]!!.first()
+        val equivNode = if(storeNode.node is AllocatedObjectNode) getNode(storeNode) else storeNode
+        state.getOrPut(equivNode) { StoreFieldInformation() }.correspondingAllocatedObjects.addAll(captureGroups["value"]!!.map(::getNode))
     }
 
-    val commitAllocQuery by WholeMatchQuery(
-        """
-digraph G {
-    commit [ label="(?P<commit>)|is('CommitAllocationNode')" ];
-	alloc [ label="(?P<alloc>)|is('AllocatedObjectNode')" ];
-
-	commit -> alloc [ label="name() = 'commit'" ];
-}
-"""
-    ) { captureGroups: Map<String, List<NodeWrapper>> ->
-        if (state[captureGroups["alloc"]!!.first()] != null)
-            state[captureGroups["alloc"]!!.first()]!!.commitAllocationAssociation = captureGroups["commit"]!!.first()
-        else
-            state[captureGroups["alloc"]!!.first()] =
-                PointsToResult(mutableSetOf(), mutableSetOf(), captureGroups["commit"]!!.first())
-    }
+//    val commitAllocQuery by WholeMatchQuery(
+//        """
+//digraph G {
+//    commit [ label="(?P<commit>)|is('CommitAllocationNode')" ];
+//	alloc [ label="(?P<alloc>)|is('AllocatedObjectNode')" ];
+//
+//	commit -> alloc [ label="name() = 'commit'" ];
+//}
+//"""
+//    ) { captureGroups: Map<String, List<NodeWrapper>> ->
+//        val allocNode = captureGroups["alloc"]!!.first()
+//        state.getOrPut(allocNode) { PointsToResult() }.commitAllocationAssociation = captureGroups["commit"]!!.first()
+//    }
 
     constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity)
             : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc)
@@ -155,7 +147,7 @@ digraph G {
     val pointsToGraph: GraalAdapter by lazy {
         val results = iterateUntilFixedPoint().toList().sortedBy { it.first.id }
 
-        val associated = results.filter { it.first.node is StoreFieldNode }.flatMap { pair ->
+        val associated = results.flatMap { pair ->
             pair.second.correspondingAllocatedObjects.map {
                 Triple(
                     GenericObjectWithField(it, getFieldNameMethod(getFieldMethod(pair.first.node)) as String),
@@ -177,9 +169,9 @@ digraph G {
             }
             key to value
         }
-        val nodes = associated.flatMap { it.value }.toSet().union(associated.keys.mapNotNull { it.obj })
+        var nodes = associated.flatMap { it.value }.toSet().union(associated.keys.mapNotNull { it.obj })
             .filter { it !is GenericObjectWithField }.toMutableSet()
-        val edges = mutableSetOf<Triple<NodeWrapper, String, NodeWrapper>>()
+        var edges = mutableSetOf<Triple<NodeWrapper, String, NodeWrapper>>()
         associated.filter { it.key.obj != null }.forEach { item ->
             edges.addAll(item.value.map { Triple(item.key.obj!!, item.key.field, it) })
         }
@@ -196,16 +188,20 @@ digraph G {
             edges.removeAll(toRemove)
             edges.addAll(toAdd)
         }
-        nodes.filter { it.node is AllocatedObjectNode }.forEach { node ->
-            val commit = results.firstOrNull { it.first == node }?.second?.commitAllocationAssociation
-            if (commit != null) {
-                edges.add(Triple(node,
-                    "commit: ${SourcePosTool.getStackTraceElement(node.node as ValueNode)}",
-                    commit))
-                nodes.add(commit)
-            }
-        }
+//        nodes.filter { it.node is AllocatedObjectNode }.forEach { node ->
+//            val commit = results.firstOrNull { it.first == node }?.second?.commitAllocationAssociation
+//            if (commit != null) {
+//                edges.add(Triple(node,
+//                    "commit: ${SourcePosTool.getStackTraceElement(node.node as ValueNode)}",
+//                    commit))
+//                nodes.add(commit)
+//            }
+//        }
         val graph = GraalAdapter()
+//        println(nodes.groupBy { this.summaryFunc.getSummaryKey(it) })
+        nodes = nodes.filterIsInstance<PointsToNode>()//.groupBy { this.summaryFunc.getSummaryKey(it) }.map { it.value.first() }
+            .union(nodes.filter { it.node !is AllocatedObjectNode }).toMutableSet()
+        edges = edges.filter { it.first in nodes && it.third in nodes }.toMutableSet()
         nodes.forEach(graph::addVertex)
         edges.forEach { graph.addEdge(it.first, it.third, EdgeWrapper(EdgeWrapper.ASSOCIATED, it.second)) }
         graph
@@ -219,6 +215,11 @@ digraph G {
     }
 
 }
+
+class StoreFieldInformation(
+    val correspondingAllocatedObjects: MutableSet<NodeWrapper> = mutableSetOf(),
+    val storedValues: MutableSet<NodeWrapper> = mutableSetOf()
+)
 
 class GenericObjectWithField(val obj: NodeWrapper?, val field: String) : NodeWrapper(null) {
     override fun equals(other: Any?): Boolean {

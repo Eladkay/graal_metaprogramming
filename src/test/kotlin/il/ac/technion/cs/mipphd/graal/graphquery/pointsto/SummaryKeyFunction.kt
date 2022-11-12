@@ -18,8 +18,10 @@ object SummaryKeyByNodeIdentity : SummaryKeyFunction {
 
 object SummaryKeyByNodeSourcePos : SummaryKeyFunction {
     override fun getSummaryKey(node: NodeWrapper): Any {
-        if(node.node is ValueNode)
-            return SourcePosTool.getStackTraceElement(node.node as ValueNode)
+        if(node.node is ValueNode) {
+            val stacktrace = SourcePosTool.getStackTraceElement(node.node as ValueNode)
+            return stacktrace.methodName + ":" + stacktrace.lineNumber
+        }
         throw RuntimeException("illegal node for summary")
     }
 }
