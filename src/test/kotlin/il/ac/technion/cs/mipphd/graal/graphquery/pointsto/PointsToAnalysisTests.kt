@@ -273,7 +273,7 @@ class PointsToAnalysisTests {
     @Test
     fun `get pointsto graph of binTreeCycleWithLoopUnrolling`() {
         println("# binTreeCycleWithLoopUnrolling")
-        val analysis = PointsToAnalysis(::binTreeCycleWithLoopUnrolling.javaMethod)
+        val analysis = PointsToAnalysis(::binTreeCycleWithLoopUnrolling.javaMethod, SummaryKeyByNodeSourcePos)
         analysis.printGraph()
         println()
         val graph = analysis.pointsToGraph

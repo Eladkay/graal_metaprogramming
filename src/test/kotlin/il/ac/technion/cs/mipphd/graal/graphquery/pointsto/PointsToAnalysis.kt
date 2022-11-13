@@ -24,7 +24,7 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
         assert(nodeWrapper.node != null)
         if(nodeWrapper.node !is AllocatedObjectNode) return nodeWrapper
         val ret = summaries.getOrPut(summaryFunc.getSummaryKey(nodeWrapper)) {
-            PointsToNode(summaryFunc.getSummaryKey(nodeWrapper), nodeWrapper.node.id)
+            PointsToNode(summaryFunc.getSummaryKey(nodeWrapper))
         }
         ret.representing.add(nodeWrapper)
         associations[nodeWrapper] = ret
@@ -72,7 +72,7 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
 
         private fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
             val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
-                v.node?.id?.toString() ?: (v as PointsToNode).stolenId.toString()
+                v.node?.id?.toString() ?: (v as PointsToNode).hashCode().toString()
             }
 
             exporter.setVertexAttributeProvider { v: NodeWrapper ->
@@ -199,11 +199,22 @@ digraph G {
 //        }
         val graph = GraalAdapter()
 //        println(nodes.groupBy { this.summaryFunc.getSummaryKey(it) })
-        nodes = nodes.filterIsInstance<PointsToNode>()//.groupBy { this.summaryFunc.getSummaryKey(it) }.map { it.value.first() }
+
+
+        nodes = nodes.filterIsInstance<PointsToNode>()
             .union(nodes.filter { it.node !is AllocatedObjectNode }).toMutableSet()
         edges = edges.filter { it.first in nodes && it.third in nodes }.toMutableSet()
         nodes.forEach(graph::addVertex)
         edges.forEach { graph.addEdge(it.first, it.third, EdgeWrapper(EdgeWrapper.ASSOCIATED, it.second)) }
+
+        // association edges
+        val associationNodes = associations.keys
+        val associationEdges = associations.map { (from, to) ->
+            Triple(from, to, EdgeWrapper(EdgeWrapper.ASSOCIATED, "association"))
+        }
+        associationNodes.forEach(graph::addVertex)
+        associationEdges.forEach { graph.addEdge(it.first, it.second, it.third) }
+
         graph
     }
 

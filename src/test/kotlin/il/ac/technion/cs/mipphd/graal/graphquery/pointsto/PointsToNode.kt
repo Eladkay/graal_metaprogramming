@@ -3,7 +3,7 @@ package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
 import org.graalvm.compiler.graph.Node
 
-class PointsToNode(private val key: Any, val stolenId: Int) : NodeWrapper(null) {
+class PointsToNode(private val key: Any) : NodeWrapper(null) {
     val representing = mutableSetOf<NodeWrapper>()
     override fun isType(className: String?): Boolean {
         return className == javaClass.canonicalName

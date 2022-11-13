@@ -1,10 +1,8 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
 import il.ac.technion.cs.mipphd.graal.SourcePosTool
-import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
 import org.graalvm.compiler.nodes.ValueNode
-import kotlin.reflect.jvm.internal.ReflectProperties.Val
 
 interface SummaryKeyFunction {
     fun getSummaryKey(node: NodeWrapper): Any
@@ -25,5 +23,3 @@ object SummaryKeyByNodeSourcePos : SummaryKeyFunction {
         throw RuntimeException("illegal node for summary")
     }
 }
-
-
