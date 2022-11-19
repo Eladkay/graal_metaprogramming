@@ -1,15 +1,11 @@
-package il.ac.technion.cs.mipphd.graal.graphquery
+package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
 import il.ac.technion.cs.mipphd.graal.SourcePosTool
-import il.ac.technion.cs.mipphd.graal.graphquery.pointsto.PointsToAnalysis
-import il.ac.technion.cs.mipphd.graal.graphquery.pointsto.SummaryKeyByNodeSourcePos
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
-import org.graalvm.compiler.nodes.FixedNode
 import org.graalvm.compiler.nodes.ValueNode
 import org.junit.jupiter.api.Test
 import java.io.StringWriter
-import javax.xml.transform.Source
 import kotlin.properties.Delegates
 import kotlin.reflect.jvm.javaMethod
 
@@ -72,12 +68,8 @@ fun anyHolder3(param: String?): AnyHolder {
 
     val second = AnyHolder() // 89
     anyUser(second)
-//    second.any = null
-//    second.other = null
-//    if (param != null && param.length > 2) {
     second.any = first
     second.other = param
-//    } // to try next: separate if to two ifs with same condition
 
     val third = AnyHolder() // 93
     anyUser(third)
@@ -89,7 +81,7 @@ fun anyHolder3(param: String?): AnyHolder {
 class BinTree<T>(var value: T? = null, var left: BinTree<T>? = null, var right: BinTree<T>? = null)
 
 fun <T> containsValue(value: Int, root: BinTree<T>?): Boolean {
-    if (root == null) return false;
+    if (root == null) return false
     if (root.value == value) return true
     return containsValue(value, root.left) || containsValue(value, root.right)
 }
@@ -187,18 +179,18 @@ fun binTreeCycle(n: Int): BinTree<Nothing?> {
 
 class PointsToAnalysisTests {
 
-//    @Test
-//    fun `get graal graphs for anyHolder`() {
-//        println("anyHolder graal graphs")
-//        val methodToGraph = MethodToGraph()
-//        val graph = methodToGraph.getCFG(::anyHolder.javaMethod)
-//        val adapter = GraalAdapter.fromGraal(graph)
-//        val writer = StringWriter()
-//        adapter.exportQuery(writer)
-//        println(writer.toString())
-//        println()
-//    }
-//
+    @Test
+    fun `get graal graphs for anyHolder`() {
+        println("anyHolder graal graphs")
+        val methodToGraph = MethodToGraph()
+        val graph = methodToGraph.getCFG(::anyHolder.javaMethod)
+        val adapter = GraalAdapter.fromGraal(graph)
+        val writer = StringWriter()
+        adapter.exportQuery(writer)
+        println(writer.toString())
+        println()
+    }
+
     @Test
     fun `get pointsto graph of anyHolder`() {
         println("# anyHolder")

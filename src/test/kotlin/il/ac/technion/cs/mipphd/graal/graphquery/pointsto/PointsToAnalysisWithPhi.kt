@@ -6,7 +6,9 @@ import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
+import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.calc.FloatingNode
+import org.graalvm.compiler.nodes.java.AccessFieldNode
 import org.graalvm.compiler.nodes.java.LoadFieldNode
 import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode
 import org.jgrapht.nio.Attribute
@@ -15,7 +17,7 @@ import org.jgrapht.nio.dot.DOTExporter
 import java.io.StringWriter
 import java.lang.reflect.Method
 
-class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity) :
+class PointsToAnalysisWithPhi(graal: GraalAdapter, private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity) :
     QueryExecutor<AssociationInformation>(graal, { AssociationInformation() }) {
 
     private val summaries = mutableMapOf<Any, PointsToNode>()
@@ -28,7 +30,7 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
         if (nodeWrapper.node !is FloatingNode) {
             return nodeWrapper // heuristic, todo
         }
-        if (nodeWrapper.node !is AllocatedObjectNode) {
+        if (nodeWrapper.node !is AllocatedObjectNode && nodeWrapper.node !is PhiNode) {
             val ret = PointsToNode(nodeWrapper)
             associations[nodeWrapper] = ret
             ret.representing.add(nodeWrapper)
@@ -47,24 +49,26 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
         val NOP_NODES = listOf(
             "Pi",
             "VirtualInstance",
-            "ValuePhi",
             "VirtualObjectState",
             "MaterializedObjectState"
         ).map { if (it.endsWith("State")) it else "${it}Node" }
         val NOT_VALUE_NODES = listOf(
             "Pi",
             "VirtualInstance",
-            "ValuePhi",
             "Begin",
             "Merge",
             "End",
             "FrameState",
             "VirtualObjectState",
-            "MaterializedObjectState"
+            "MaterializedObjectState",
+            "ExceptionObject"
         ).map { if (it.endsWith("State")) it else "${it}Node" }
-
         private val accessFieldNodeClass = Class.forName("org.graalvm.compiler.nodes.java.AccessFieldNode")
         private val getFieldMethod = accessFieldNodeClass.getDeclaredMethod("field")
+        private fun getFieldEdgeName(node: NodeWrapper): String {
+            if(node.node !is AccessFieldNode) return "is"
+            return getFieldNameMethod(getFieldMethod(node.node)).toString()
+        }
         private val fieldClazz = Class.forName("jdk.vm.ci.meta.JavaField")
         private val getFieldNameMethod = fieldClazz.getDeclaredMethod("getName")
 
@@ -141,6 +145,23 @@ digraph G {
             )
         )
     }
+    val phiQuery by WholeMatchQuery(
+        """
+digraph G {
+    phiNode [ label="(?P<phi>)|is('PhiNode')" ];
+    nop [ label="(?P<nop>)|${NOP_NODES.joinToString(" or ") { "is('$it')" }}" ];
+	value [ label="(?P<value>)|${NOT_VALUE_NODES.joinToString(" and ") { "not is('$it')" }}" ];
+
+	value -> nop [ label="*|is('DATA')" ];
+    nop -> phiNode [ label="is('DATA')" ];
+}
+"""
+    ) { captureGroups: Map<String, List<NodeWrapper>> ->
+        val storeNode = captureGroups["phi"]!!.first()
+        val equivNode = getNode(storeNode)
+        state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getNode))
+        state[equivNode]!!.memoryLocations.addAll(captureGroups["phi"]!!.map(::getNode))
+    }
 
     constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity)
             : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc)
@@ -151,7 +172,7 @@ digraph G {
         val associated = results.flatMap { pair ->
             pair.second.memoryLocations.map {
                 Triple(
-                    GenericObjectWithField(it, getFieldNameMethod(getFieldMethod(pair.first.node)) as String),
+                    GenericObjectWithField(it, getFieldEdgeName(pair.first)),
                     it,
                     pair
                 )
@@ -163,7 +184,7 @@ digraph G {
                     value.add(
                         GenericObjectWithField(
                             alloc,
-                            getFieldNameMethod(getFieldMethod(node.node)) as String
+                            getFieldEdgeName(node)
                         )
                     )
                 } else value.add(node)
@@ -205,39 +226,10 @@ digraph G {
         graph
     }
 
-    fun printGraph() {
+    override fun toString(): String {
         val sw = StringWriter()
         writeQueryInternal(pointsToGraph, sw)
-        println(sw.buffer)
+        return sw.buffer.toString()
     }
 
-}
-
-class AssociationInformation(
-    val memoryLocations: MutableSet<NodeWrapper> = mutableSetOf(),
-    val storedValues: MutableSet<NodeWrapper> = mutableSetOf()
-)
-
-class GenericObjectWithField(val obj: NodeWrapper?, val field: String) : NodeWrapper(null) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is GenericObjectWithField) return false
-        if (obj != other.obj) return false
-        if (field != other.field) return false
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = obj.hashCode()
-        result = 31 * result + field.hashCode()
-        return result
-    }
-
-    override fun toString(): String {
-        return "($obj, $field)"
-    }
-
-    override fun isType(className: String?): Boolean {
-        return className == "GenericObjectWithField"
-    }
 }
