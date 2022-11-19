@@ -20,6 +20,43 @@ fun phiTest1(param: String?): AnyHolder {
     return first
 }
 
+fun phiTest2(param: String?): Any {
+    var first = AnyHolder()
+    anyUser(first)
+    first.any = param
+
+    var second = AnyHolder()
+    anyUser(second)
+    second.any = null
+    second.other = param
+
+    if(anyUser(param)) {
+        val oldFirst = first
+
+        second.any = first
+        first = second
+        first.other = null
+
+        second = oldFirst
+        second.any = null
+    }
+    return first to second
+}
+
+fun testSelfAssignment(param: String?): AnyHolder {
+    var first = AnyHolder()
+    anyUser(first)
+    val second = AnyHolder()
+    anyUser(second)
+    if(anyUser(param)) {
+        first.any = first
+        first.other = null
+        anyUser(first)
+        first = second
+    }
+    return first
+}
+
 class PointsToAnalysisWithPhiTests {
 
     val methodToGraph = MethodToGraph()
@@ -30,8 +67,7 @@ class PointsToAnalysisWithPhiTests {
         if(autoOpenFiles) {
             val file = File("tmp_graph.dot")
             file.writeText(str)
-            val proc1 = Runtime.getRuntime().exec("dot -Tpng tmp_graph.dot -o tmp_graph.png")
-            proc1.waitFor()
+            Runtime.getRuntime().exec("dot -Tpng tmp_graph.dot -o tmp_graph.png").waitFor()
             Runtime.getRuntime().exec("open tmp_graph.png")
             file.delete()
         }
@@ -51,6 +87,20 @@ class PointsToAnalysisWithPhiTests {
     fun `get pointsto graph with phi for phiTest1`() {
         println("# phiTest1")
         val analysis = PointsToAnalysisWithPhi(::phiTest1.javaMethod)
+        openGraph(analysis.toString())
+    }
+
+    @Test
+    fun `get pointsto graph with phi for phiTest2`() {
+        println("# phiTest2")
+        val analysis = PointsToAnalysisWithPhi(::phiTest2.javaMethod, addAssociations = false)
+        openGraph(analysis.toString())
+    }
+
+    @Test
+    fun `get pointsto graph with phi for testSelfAssignment`() {
+        println("# testSelfAssignment")
+        val analysis = PointsToAnalysisWithPhi(::testSelfAssignment.javaMethod)
         openGraph(analysis.toString())
     }
 

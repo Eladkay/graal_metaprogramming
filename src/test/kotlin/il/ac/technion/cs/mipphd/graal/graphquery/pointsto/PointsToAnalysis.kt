@@ -12,12 +12,18 @@ import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode
 import java.io.StringWriter
 import java.lang.reflect.Method
 
-class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity) :
+open class PointsToAnalysis(
+    graal: GraalAdapter,
+    private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity,
+    val addAssociations: Boolean = true,
+    nopNodes: Collection<String> = DEFAULT_NOP_NODES,
+    notValueNodes: Collection<String> = DEFAULT_NOT_VALUE_NODES
+) :
     QueryExecutor<AssociationInformation>(graal, { AssociationInformation() }) {
 
     private val summaries = mutableMapOf<Any, PointsToNode>()
     private val associations = mutableMapOf<NodeWrapper, PointsToNode>()
-    private fun getNode(nodeWrapper: NodeWrapper): NodeWrapper {
+    protected fun getNode(nodeWrapper: NodeWrapper): NodeWrapper {
         assert(nodeWrapper.node != null)
         if (nodeWrapper in associations) {
             return associations[nodeWrapper]!!
@@ -40,14 +46,17 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
     }
 
     companion object {
-        val NOP_NODES = listOf(
+        @JvmStatic
+        protected fun addNodeSuffix(it: String) = if (it.endsWith("State")) it else "${it}Node"
+
+        val DEFAULT_NOP_NODES = listOf(
             "Pi",
             "VirtualInstance",
             "ValuePhi",
             "VirtualObjectState",
             "MaterializedObjectState"
-        ).map { if (it.endsWith("State")) it else "${it}Node" }
-        val NOT_VALUE_NODES = listOf(
+        ).map(::addNodeSuffix)
+        val DEFAULT_NOT_VALUE_NODES = listOf(
             "Pi",
             "VirtualInstance",
             "ValuePhi",
@@ -58,15 +67,15 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
             "VirtualObjectState",
             "MaterializedObjectState",
             "ExceptionObject"
-        ).map { if (it.endsWith("State")) it else "${it}Node" }
+        ).map(::addNodeSuffix)
     }
 
     val storeQuery by WholeMatchQuery(
         """
 digraph G {
     storeNode [ label="(?P<store>)|is('StoreFieldNode')" ];
-    nop [ label="(?P<nop>)|${NOP_NODES.joinToString(" or ") { "is('$it')" }}" ];
-	value [ label="(?P<value>)|${NOT_VALUE_NODES.joinToString(" and ") { "not is('$it')" }}" ];
+    nop [ label="(?P<nop>)|${nopNodes.joinToString(" or ") { "is('$it')" }}" ];
+	value [ label="(?P<value>)|${notValueNodes.joinToString(" and ") { "not is('$it')" }}" ];
 
 	value -> nop [ label="*|is('DATA')" ];
     nop -> storeNode [ label="name() = 'value'" ];
@@ -81,7 +90,7 @@ digraph G {
         """
 digraph G {
     storeNode [ label="(?P<store>)|is('StoreFieldNode') or is('LoadFieldNode')" ];
-    nop [ label="(?P<nop>)|${NOP_NODES.joinToString(" or ") { "is('$it')" }}" ];
+    nop [ label="(?P<nop>)|${nopNodes.joinToString(" or ") { "is('$it')" }}" ];
 	allocated [ label="(?P<value>)|is('AllocatedObjectNode')" ];
 
 	allocated -> nop [ label="*|is('DATA')" ];
@@ -98,8 +107,8 @@ digraph G {
         )
     }
 
-    constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity)
-            : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc)
+    constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity, addAssociations: Boolean = true)
+            : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc, addAssociations)
 
     val pointsToGraph: GraalAdapter by lazy {
         val results = iterateUntilFixedPoint().toList()
@@ -150,14 +159,15 @@ digraph G {
         nodes.forEach(graph::addVertex)
         edges.forEach { graph.addEdge(it.first, it.third, EdgeWrapper(EdgeWrapper.ASSOCIATED, it.second)) }
 
-        // association edges
-        val associationNodes = associations.keys.union(associations.values)
-        val associationEdges = associations.map { (from, to) ->
-            Triple(from, to, EdgeWrapper(EdgeWrapper.ASSOCIATED, "association"))
+        if(addAssociations) {
+            // association edges
+            val associationNodes = associations.keys.union(associations.values)
+            val associationEdges = associations.map { (from, to) ->
+                Triple(from, to, EdgeWrapper(EdgeWrapper.ASSOCIATED, "association"))
+            }
+            associationNodes.forEach(graph::addVertex)
+            associationEdges.forEach { graph.addEdge(it.first, it.second, it.third) }
         }
-        associationNodes.forEach(graph::addVertex)
-        associationEdges.forEach { graph.addEdge(it.first, it.second, it.third) }
-
         graph
     }
 
