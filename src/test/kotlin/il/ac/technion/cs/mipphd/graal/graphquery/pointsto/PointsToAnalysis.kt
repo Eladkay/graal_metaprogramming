@@ -4,14 +4,11 @@ import il.ac.technion.cs.mipphd.graal.graphquery.QueryExecutor
 import il.ac.technion.cs.mipphd.graal.graphquery.WholeMatchQuery
 import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
-import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
+import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.calc.FloatingNode
 import org.graalvm.compiler.nodes.java.LoadFieldNode
 import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode
-import org.jgrapht.nio.Attribute
-import org.jgrapht.nio.DefaultAttribute
-import org.jgrapht.nio.dot.DOTExporter
 import java.io.StringWriter
 import java.lang.reflect.Method
 
@@ -28,7 +25,7 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
         if (nodeWrapper.node !is FloatingNode) {
             return nodeWrapper // heuristic, todo
         }
-        if (nodeWrapper.node !is AllocatedObjectNode) {
+        if (nodeWrapper.node !is AllocatedObjectNode && nodeWrapper.node !is PhiNode) {
             val ret = PointsToNode(nodeWrapper)
             associations[nodeWrapper] = ret
             ret.representing.add(nodeWrapper)
@@ -43,7 +40,6 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
     }
 
     companion object {
-        private val methodToGraph = MethodToGraph()
         val NOP_NODES = listOf(
             "Pi",
             "VirtualInstance",
@@ -60,49 +56,9 @@ class PointsToAnalysis(graal: GraalAdapter, private val summaryFunc: SummaryKeyF
             "End",
             "FrameState",
             "VirtualObjectState",
-            "MaterializedObjectState"
+            "MaterializedObjectState",
+            "ExceptionObject"
         ).map { if (it.endsWith("State")) it else "${it}Node" }
-
-        private val accessFieldNodeClass = Class.forName("org.graalvm.compiler.nodes.java.AccessFieldNode")
-        private val getFieldMethod = accessFieldNodeClass.getDeclaredMethod("field")
-        private val fieldClazz = Class.forName("jdk.vm.ci.meta.JavaField")
-        private val getFieldNameMethod = fieldClazz.getDeclaredMethod("getName")
-
-
-        // todo - code duplication w/ GraalAdapter
-        private val edgeColor = mapOf(
-            EdgeWrapper.DATA to "blue",
-            EdgeWrapper.CONTROL to "red",
-            EdgeWrapper.ASSOCIATED to "black"
-        )
-        private val edgeStyle = mapOf(
-            EdgeWrapper.DATA to "",
-            EdgeWrapper.CONTROL to "",
-            EdgeWrapper.ASSOCIATED to "dashed"
-        )
-
-        private fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
-            val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
-                v.node?.id?.toString() ?: (v as PointsToNode).hashCode().toString()
-            }
-
-            exporter.setVertexAttributeProvider { v: NodeWrapper ->
-                val attrs: MutableMap<String, Attribute> =
-                    HashMap()
-                attrs["label"] = DefaultAttribute.createAttribute(v.toString())
-                attrs
-            }
-
-            exporter.setEdgeAttributeProvider { e: EdgeWrapper ->
-                val attrs: MutableMap<String, Attribute> =
-                    HashMap()
-                attrs["label"] = DefaultAttribute.createAttribute(e.name)
-                attrs["color"] = DefaultAttribute.createAttribute(edgeColor[e.label])
-                attrs["style"] = DefaultAttribute.createAttribute(edgeStyle[e.label])
-                attrs
-            }
-            exporter.exportGraph(graalph, output)
-        }
     }
 
     val storeQuery by WholeMatchQuery(
@@ -151,7 +107,7 @@ digraph G {
         val associated = results.flatMap { pair ->
             pair.second.memoryLocations.map {
                 Triple(
-                    GenericObjectWithField(it, getFieldNameMethod(getFieldMethod(pair.first.node)) as String),
+                    GenericObjectWithField(it, getFieldEdgeName(pair.first)),
                     it,
                     pair
                 )
@@ -163,7 +119,7 @@ digraph G {
                     value.add(
                         GenericObjectWithField(
                             alloc,
-                            getFieldNameMethod(getFieldMethod(node.node)) as String
+                            getFieldEdgeName(node)
                         )
                     )
                 } else value.add(node)
@@ -205,39 +161,10 @@ digraph G {
         graph
     }
 
-    fun printGraph() {
+    override fun toString(): String {
         val sw = StringWriter()
         writeQueryInternal(pointsToGraph, sw)
-        println(sw.buffer)
+        return sw.buffer.toString()
     }
 
-}
-
-class AssociationInformation(
-    val memoryLocations: MutableSet<NodeWrapper> = mutableSetOf(),
-    val storedValues: MutableSet<NodeWrapper> = mutableSetOf()
-)
-
-class GenericObjectWithField(val obj: NodeWrapper?, val field: String) : NodeWrapper(null) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is GenericObjectWithField) return false
-        if (obj != other.obj) return false
-        if (field != other.field) return false
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = obj.hashCode()
-        result = 31 * result + field.hashCode()
-        return result
-    }
-
-    override fun toString(): String {
-        return "($obj, $field)"
-    }
-
-    override fun isType(className: String?): Boolean {
-        return className == "GenericObjectWithField"
-    }
 }
