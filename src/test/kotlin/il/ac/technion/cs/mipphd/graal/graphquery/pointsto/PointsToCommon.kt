@@ -132,6 +132,7 @@ internal fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
 }
 
 internal fun getFieldEdgeName(node: NodeWrapper): String {
-    if(node.node !is AccessFieldNode) return "is"
-    return getFieldNameMethod(getFieldMethod(node.node)).toString()
+    if(node is GenericObjectWithField) return node.field
+    if(node.node is AccessFieldNode) return getFieldNameMethod(getFieldMethod(node.node)).toString()
+    return "is"
 }

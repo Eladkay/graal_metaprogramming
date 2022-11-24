@@ -9,9 +9,7 @@ class PointsToAnalysisWithPhi(
     graal: GraalAdapter,
     summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity,
     addAssociations: Boolean = true,
-    nopNodes: Collection<String> = NOP_NODES,
-    notValueNodes: Collection<String> = NOT_VALUE_NODES
-) : PointsToAnalysis(graal, summaryFunc, addAssociations, nopNodes, notValueNodes) {
+) : PointsToAnalysis(graal, summaryFunc, addAssociations, NOP_NODES, NOT_VALUE_NODES) {
 
     constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity, addAssociations: Boolean = true)
             : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc, addAssociations)
@@ -29,7 +27,6 @@ class PointsToAnalysisWithPhi(
             "Begin",
             "Merge",
             "End",
-            "FrameState",
             "VirtualObjectState",
             "MaterializedObjectState",
             "ExceptionObject"
@@ -40,17 +37,19 @@ class PointsToAnalysisWithPhi(
         """
 digraph G {
     phiNode [ label="(?P<phi>)|is('PhiNode')" ];
-    nop [ label="(?P<nop>)|${nopNodes.joinToString(" or ") { "is('$it')" }}" ];
-	value [ label="(?P<value>)|${notValueNodes.joinToString(" and ") { "not is('$it')" }}" ];
+    nop [ label="(?P<nop>)|${NOP_NODES.joinToString(" or ") { "is('$it')" }}" ];
+	value [ label="(?P<value>)|${NOT_VALUE_NODES.joinToString(" and ") { "not is('$it')" }}" ];
+    framestate [ label="(?P<framestate>)|is('FrameState')" ];
 
 	value -> nop [ label="*|is('DATA')" ];
     nop -> phiNode [ label="is('DATA')" ];
+    phiNode -> framestate [ label="is('DATA') and name() = 'values'" ];
 }
 """
     ) { captureGroups: Map<String, List<NodeWrapper>> ->
-        val storeNode = captureGroups["phi"]!!.first()
-        val equivNode = getNode(storeNode)
-        state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getNode))
-        state[equivNode]!!.memoryLocations.addAll(captureGroups["phi"]!!.map(::getNode))
+        val storeNode = captureGroups["framestate"]!!.first()
+        val equivNode = GenericObjectWithField(getEquivalentNode(storeNode), "phi${captureGroups["phi"]!!.first().node.id}")
+        state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getEquivalentNode))
+        state[equivNode]!!.memoryLocations.addAll(captureGroups["framestate"]!!.map(::getEquivalentNode))
     }
 }

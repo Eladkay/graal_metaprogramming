@@ -1,7 +1,9 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
+import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
+import org.graalvm.compiler.nodes.PhiNode
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.io.StringWriter
@@ -23,12 +25,8 @@ fun phiTest1(param: String?): AnyHolder {
 fun phiTest2(param: String?): Any {
     var first = AnyHolder()
     anyUser(first)
-    first.any = param
-
     var second = AnyHolder()
     anyUser(second)
-    second.any = null
-    second.other = param
 
     if(anyUser(param)) {
         val oldFirst = first
@@ -39,6 +37,10 @@ fun phiTest2(param: String?): Any {
 
         second = oldFirst
         second.any = null
+    } else {
+        first.any = param
+        second.any = null
+        second.other = param
     }
     return first to second
 }
@@ -73,11 +75,25 @@ class PointsToAnalysisWithPhiTests {
         }
     }
 
+    private inline fun <reified T> filterGraph(graalAdapter: GraalAdapter): GraalAdapter {
+        val nodes = graalAdapter.vertexSet().filter { it.node is T }.toMutableSet()
+        nodes.addAll(graalAdapter.vertexSet().filter { nodes.any { itt -> graalAdapter.containsEdge(itt, it) || graalAdapter.containsEdge(it, itt) }})
+        val edges = nodes.flatMap { n1 -> nodes.map { n2 -> n1 to n2 } }
+            .filter { graalAdapter.containsEdge(it.first, it.second) }
+            .map { Triple(it.first, it.second, graalAdapter.getEdge(it.first, it.second)) }
+        val ret = GraalAdapter()
+        nodes.forEach(ret::addVertex)
+        edges.forEach {
+            ret.addEdge(it.first, it.second, EdgeWrapper(it.third.label, it.third.name))
+        }
+        return ret
+    }
+
     @Test
     fun `get graal graph for phiTest1`() {
         val method = ::phiTest1.javaMethod
         val graph = methodToGraph.getCFG(method)
-        val adapter = GraalAdapter.fromGraal(graph)
+        val adapter = filterGraph<PhiNode>(GraalAdapter.fromGraal(graph))
         val writer = StringWriter()
         adapter.exportQuery(writer)
         openGraph(writer.buffer.toString())
@@ -93,7 +109,7 @@ class PointsToAnalysisWithPhiTests {
     @Test
     fun `get pointsto graph with phi for phiTest2`() {
         println("# phiTest2")
-        val analysis = PointsToAnalysisWithPhi(::phiTest2.javaMethod, addAssociations = false)
+        val analysis = PointsToAnalysisWithPhi(::phiTest2.javaMethod)
         openGraph(analysis.toString())
     }
 

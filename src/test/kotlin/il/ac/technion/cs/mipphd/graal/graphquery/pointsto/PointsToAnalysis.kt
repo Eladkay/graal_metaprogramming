@@ -5,6 +5,7 @@ import il.ac.technion.cs.mipphd.graal.graphquery.WholeMatchQuery
 import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
+import org.graalvm.compiler.nodes.FrameState
 import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.calc.FloatingNode
 import org.graalvm.compiler.nodes.java.LoadFieldNode
@@ -23,15 +24,15 @@ open class PointsToAnalysis(
 
     private val summaries = mutableMapOf<Any, PointsToNode>()
     private val associations = mutableMapOf<NodeWrapper, PointsToNode>()
-    protected fun getNode(nodeWrapper: NodeWrapper): NodeWrapper {
+    protected fun getEquivalentNode(nodeWrapper: NodeWrapper): NodeWrapper {
         assert(nodeWrapper.node != null)
         if (nodeWrapper in associations) {
             return associations[nodeWrapper]!!
         }
-        if (nodeWrapper.node !is FloatingNode) {
+        if (nodeWrapper.node !is FloatingNode && nodeWrapper.node !is FrameState) {
             return nodeWrapper // heuristic, todo
         }
-        if (nodeWrapper.node !is AllocatedObjectNode && nodeWrapper.node !is PhiNode) {
+        if (nodeWrapper.node !is AllocatedObjectNode && nodeWrapper.node !is PhiNode && nodeWrapper.node !is FrameState) {
             val ret = PointsToNode(nodeWrapper)
             associations[nodeWrapper] = ret
             ret.representing.add(nodeWrapper)
@@ -83,8 +84,8 @@ digraph G {
 """
     ) { captureGroups: Map<String, List<NodeWrapper>> ->
         val storeNode = captureGroups["store"]!!.first()
-        val equivNode = getNode(storeNode)
-        state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getNode))
+        val equivNode = getEquivalentNode(storeNode)
+        state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getEquivalentNode))
     }
     val assocQuery by WholeMatchQuery(
         """
@@ -99,10 +100,10 @@ digraph G {
 """
     ) { captureGroups: Map<String, List<NodeWrapper>> ->
         val storeNode = captureGroups["store"]!!.first()
-        val equivNode = if (storeNode.node is AllocatedObjectNode) getNode(storeNode) else storeNode
+        val equivNode = if (storeNode.node is AllocatedObjectNode) getEquivalentNode(storeNode) else storeNode
         state.getOrPut(equivNode) { AssociationInformation() }.memoryLocations.addAll(
             captureGroups["value"]!!.map(
-                ::getNode
+                ::getEquivalentNode
             )
         )
     }
