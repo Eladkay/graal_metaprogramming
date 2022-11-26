@@ -3,7 +3,9 @@ package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
 import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
+import org.graalvm.compiler.nodes.FrameState
 import org.graalvm.compiler.nodes.PhiNode
+import org.graalvm.compiler.nodes.java.StoreFieldNode
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.io.StringWriter
@@ -56,6 +58,42 @@ fun testSelfAssignment(param: String?): AnyHolder {
         anyUser(first)
         first = second
     }
+    return first
+}
+
+fun phiTest3(param: String?): Any {
+    val first = AnyHolder()
+    anyUser(first)
+    val second = AnyHolder()
+    anyUser(second)
+
+    if(anyUser(param)) {
+        first.any = "2"
+        second.any = "2"
+    } else {
+        first.any = "1"
+        second.any = "1"
+    }
+
+    return first to second
+}
+
+fun phiTest4(any: Any?): Any {
+    val first = AnyHolder()
+    anyUser(first)
+    if(anyUser(any)) {
+        first.any = any
+    } else {
+        first.any = null
+    }
+    return first
+}
+
+fun phiTest5(any: Any?): Any {
+    val first = AnyHolder()
+    anyUser(first)
+    val interior = if(anyUser(any)) any else null
+    first.any = interior
     return first
 }
 
@@ -117,6 +155,47 @@ class PointsToAnalysisWithPhiTests {
     fun `get pointsto graph with phi for testSelfAssignment`() {
         println("# testSelfAssignment")
         val analysis = PointsToAnalysisWithPhi(::testSelfAssignment.javaMethod)
+        openGraph(analysis.toString())
+    }
+
+    @Test
+    fun `get pointsto graph with phi for phiTest3`() {
+        println("# phiTest3")
+        val analysis = PointsToAnalysisWithPhi(::phiTest3.javaMethod, summaryFunc = SummaryKeyByNodeSourcePosOrIdentity)
+        openGraph(analysis.toString())
+    }
+
+    @Test
+    fun `get graal graph for phiTest3`() {
+        val method = ::phiTest3.javaMethod
+        val graph = methodToGraph.getCFG(method)
+        val adapter = filterGraph<FrameState>(GraalAdapter.fromGraal(graph))
+        val writer = StringWriter()
+        adapter.exportQuery(writer)
+        openGraph(writer.buffer.toString())
+    }
+
+    @Test
+    fun `get pointsto graph with phi for phiTest4`() {
+        println("# phiTest3")
+        val analysis = PointsToAnalysisWithPhi(::phiTest4.javaMethod)
+        openGraph(analysis.toString())
+    }
+
+    @Test
+    fun `get graal graph for phiTest4`() {
+        val method = ::phiTest4.javaMethod
+        val graph = methodToGraph.getCFG(method)
+        val adapter = filterGraph<StoreFieldNode>(GraalAdapter.fromGraal(graph))
+        val writer = StringWriter()
+        adapter.exportQuery(writer)
+        openGraph(writer.buffer.toString())
+    }
+
+    @Test
+    fun `get pointsto graph with phi for phiTest5`() {
+        println("# phiTest3")
+        val analysis = PointsToAnalysisWithPhi(::phiTest5.javaMethod)
         openGraph(analysis.toString())
     }
 

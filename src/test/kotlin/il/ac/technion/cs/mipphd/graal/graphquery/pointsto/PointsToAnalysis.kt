@@ -122,9 +122,9 @@ digraph G {
                     pair
                 )
             }
-        }.associate { (key, alloc, itt) ->
+        }.map { (key, alloc, itt) ->
             val value = mutableListOf<NodeWrapper>()
-            for (node in (results.firstOrNull { it.first == itt.first }?.second?.storedValues ?: listOf())) {
+            for (node in results.filter { it.first == itt.first }.flatMap { it.second.storedValues }) {
                 if (node.node is LoadFieldNode) {
                     value.add(
                         GenericObjectWithField(
@@ -136,11 +136,11 @@ digraph G {
             }
             key to value
         }
-        val nodes = associated.flatMap { it.value }.toSet().union(associated.keys.mapNotNull { it.obj })
+        val nodes = associated.flatMap { it.second }.toSet().union(associated.map { it.first }.mapNotNull { it.obj })
             .filter { it !is GenericObjectWithField }.toMutableSet()
         val edges = mutableSetOf<Triple<NodeWrapper, String, NodeWrapper>>()
-        associated.filter { it.key.obj != null }.forEach { item ->
-            edges.addAll(item.value.map { Triple(item.key.obj!!, item.key.field, it) })
+        associated.filter { it.first.obj != null }.forEach { item ->
+            edges.addAll(item.second.map { Triple(item.first.obj!!, item.first.field, it) })
         }
         while (true) {
             val toRemove = mutableSetOf<Triple<NodeWrapper, String, NodeWrapper>>()
@@ -148,7 +148,9 @@ digraph G {
             for ((from, field, to) in edges) {
                 if (to is GenericObjectWithField) {
                     toRemove.add(Triple(from, field, to))
-                    toAdd.addAll(associated[to]!!.map { Triple(from, field, it) }.filterNot { it in edges })
+                    toAdd.addAll(associated.asSequence().filter { it.first == to }
+                        .map { it.second }
+                        .flatten().map { Triple(from, field, it) }.filterNot { it in edges }.toList())
                 }
             }
             if (toRemove.isEmpty() && toAdd.isEmpty()) break
