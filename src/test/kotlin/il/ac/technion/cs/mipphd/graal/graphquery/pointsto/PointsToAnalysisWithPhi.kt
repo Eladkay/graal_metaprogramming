@@ -5,16 +5,19 @@ import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
 import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
 import java.lang.reflect.Method
 
-class PointsToAnalysisWithPhi(
+open class PointsToAnalysisWithPhi protected constructor(
     graal: GraalAdapter,
     summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity,
-    addAssociations: Boolean = true,
-) : PointsToAnalysis(graal, summaryFunc, addAssociations, NOP_NODES, NOT_VALUE_NODES) {
+    addAssociations: Boolean = true, nopNodes: Collection<String>, notValueNodes: Collection<String>
+) : PointsToAnalysis(graal, summaryFunc, addAssociations, nopNodes, notValueNodes) {
 
     constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity, addAssociations: Boolean = true)
             : this(GraalAdapter.fromGraal(methodToGraph.getCFG(method!!)), summaryFunc, addAssociations)
 
-    private companion object {
+    constructor(graal: GraalAdapter, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity, addAssociations: Boolean = true)
+            : this(graal, summaryFunc, addAssociations, NOP_NODES, NOT_VALUE_NODES)
+
+    protected companion object {
         val NOP_NODES = listOf(
             "Pi",
             "VirtualInstance",
