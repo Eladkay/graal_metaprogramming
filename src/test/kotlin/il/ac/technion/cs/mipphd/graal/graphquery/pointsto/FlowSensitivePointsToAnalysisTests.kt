@@ -1,17 +1,11 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
-import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
-import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisEdge
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisGraph
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisNode
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
-import org.graalvm.compiler.nodes.BeginNode
-import org.graalvm.compiler.nodes.FixedNode
-import org.graalvm.compiler.nodes.FrameState
-import org.graalvm.compiler.nodes.MergeNode
-import org.graalvm.compiler.nodes.PhiNode
-import org.graalvm.compiler.nodes.java.StoreFieldNode
 import org.junit.jupiter.api.Test
 import java.io.File
-import java.io.StringWriter
 import kotlin.reflect.jvm.javaMethod
 
 
@@ -31,16 +25,16 @@ class FlowSensitivePointsToAnalysisTests {
         }
     }
 
-    private inline fun <reified T> filterGraph(graalAdapter: GraalAdapter): GraalAdapter {
-        val nodes = graalAdapter.vertexSet().filter { it.node is T }.toMutableSet()
+    private inline fun <reified T> filterGraph(graalAdapter: AnalysisGraph): AnalysisGraph {
+        val nodes = graalAdapter.vertexSet().filter { it is T || (it is AnalysisNode.IR && it.node() is T) }.toMutableSet()
         nodes.addAll(graalAdapter.vertexSet().filter { nodes.any { itt -> graalAdapter.containsEdge(itt, it) || graalAdapter.containsEdge(it, itt) }})
         val edges = nodes.flatMap { n1 -> nodes.map { n2 -> n1 to n2 } }
             .filter { graalAdapter.containsEdge(it.first, it.second) }
             .map { Triple(it.first, it.second, graalAdapter.getEdge(it.first, it.second)) }
-        val ret = GraalAdapter()
+        val ret = AnalysisGraph()
         nodes.forEach(ret::addVertex)
         edges.forEach {
-            ret.addEdge(it.first, it.second, EdgeWrapper(it.third.label, it.third.name))
+            ret.addEdge(it.first, it.second, it.third.clone() as AnalysisEdge)
         }
         return ret
     }

@@ -1,16 +1,12 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
 import il.ac.technion.cs.mipphd.graal.SourcePosTool
-import il.ac.technion.cs.mipphd.graal.utils.EdgeWrapper
-import il.ac.technion.cs.mipphd.graal.utils.GraalAdapter
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisEdge
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisNode
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
-import il.ac.technion.cs.mipphd.graal.utils.NodeWrapper
+import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.ValueNode
 import org.graalvm.compiler.nodes.java.AccessFieldNode
-import org.jgrapht.nio.Attribute
-import org.jgrapht.nio.DefaultAttribute
-import org.jgrapht.nio.dot.DOTExporter
-import java.io.StringWriter
 
 internal val methodToGraph = MethodToGraph()
 internal val accessFieldNodeClass = Class.forName("org.graalvm.compiler.nodes.java.AccessFieldNode")
@@ -18,7 +14,7 @@ internal val getFieldMethod = accessFieldNodeClass.getDeclaredMethod("field")
 internal val fieldClazz = Class.forName("jdk.vm.ci.meta.JavaField")
 internal val getFieldNameMethod = fieldClazz.getDeclaredMethod("getName")
 
-class GenericObjectWithField(val obj: NodeWrapper?, val field: String) : NodeWrapper(null) {
+class GenericObjectWithField(val obj: AnalysisNode?, val field: String) : AnalysisNode.Specific() {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is GenericObjectWithField) return false
@@ -36,22 +32,15 @@ class GenericObjectWithField(val obj: NodeWrapper?, val field: String) : NodeWra
     override fun toString(): String {
         return "($obj, $field)"
     }
-
-    override fun isType(className: String?): Boolean {
-        return className == "GenericObjectWithField"
-    }
 }
 
 class AssociationInformation(
-    val memoryLocations: MutableSet<NodeWrapper> = mutableSetOf(),
-    val storedValues: MutableSet<NodeWrapper> = mutableSetOf()
+    val memoryLocations: MutableSet<AnalysisNode> = mutableSetOf(),
+    val storedValues: MutableSet<AnalysisNode> = mutableSetOf()
 )
 
-class PointsToNode(private val key: Any) : NodeWrapper(null) {
-    val representing = mutableSetOf<NodeWrapper>()
-    override fun isType(className: String?): Boolean {
-        return className == javaClass.canonicalName
-    }
+class PointsToNode(private val key: Any) : AnalysisNode.Specific() {
+    val representing = mutableSetOf<AnalysisNode>()
 
     override fun toString(): String {
         return "PointsToNode(representing ${if(representing.size == 1) representing.first().toString() else "${representing.size} nodes"}" +
@@ -76,29 +65,31 @@ class PointsToNode(private val key: Any) : NodeWrapper(null) {
     }
 }
 
+class PointsToEdge(label: String) : AnalysisEdge.Extra(label)
 
 interface SummaryKeyFunction {
-    fun getSummaryKey(node: NodeWrapper): Any
+    fun getSummaryKey(node: AnalysisNode): Any
 }
 
 object SummaryKeyByNodeIdentity : SummaryKeyFunction {
-    override fun getSummaryKey(node: NodeWrapper): Any {
+    override fun getSummaryKey(node: AnalysisNode): Any {
         return node
     }
 }
 
 object SummaryKeyByNodeSourcePos : SummaryKeyFunction {
-    override fun getSummaryKey(node: NodeWrapper): Any {
-        if(node.node is ValueNode) {
-            val stacktrace = SourcePosTool.getStackTraceElement(node.node as ValueNode)
+    private fun error(node: AnalysisNode): Nothing = throw RuntimeException("illegal node for summary $node")
+    override fun getSummaryKey(node: AnalysisNode): Any {
+        if(node !is AnalysisNode.IR) error(node)
+        if(node.node() is ValueNode) {
+            val stacktrace = SourcePosTool.getStackTraceElement(node.node() as ValueNode)
             return stacktrace.methodName + ":" + stacktrace.lineNumber
-        }
-        throw RuntimeException("illegal node for summary ${node.node}")
+        } else error(node)
     }
 }
 
 object SummaryKeyByNodeSourcePosOrIdentity : SummaryKeyFunction {
-    override fun getSummaryKey(node: NodeWrapper): Any {
+    override fun getSummaryKey(node: AnalysisNode): Any {
         return try {
             SummaryKeyByNodeSourcePos.getSummaryKey(node)
         } catch (e: RuntimeException) {
@@ -107,42 +98,45 @@ object SummaryKeyByNodeSourcePosOrIdentity : SummaryKeyFunction {
     }
 }
 
-internal val edgeColor = mapOf(
-    EdgeWrapper.DATA to "blue",
-    EdgeWrapper.CONTROL to "red",
-    EdgeWrapper.ASSOCIATED to "black"
-)
-internal val edgeStyle = mapOf(
-    EdgeWrapper.DATA to "",
-    EdgeWrapper.CONTROL to "",
-    EdgeWrapper.ASSOCIATED to "dashed"
-)
+//internal val edgeColor = mapOf(
+//    EdgeWrapper.DATA to "blue",
+//    EdgeWrapper.CONTROL to "red",
+//    EdgeWrapper.ASSOCIATED to "black"
+//)
+//internal val edgeStyle = mapOf(
+//    EdgeWrapper.DATA to "",
+//    EdgeWrapper.CONTROL to "",
+//    EdgeWrapper.ASSOCIATED to "dashed"
+//)
+//
+//internal fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
+//    val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
+//        v.node?.id?.toString() ?: (v as PointsToNode).hashCode().toString()
+//    }
+//
+//    exporter.setVertexAttributeProvider { v: NodeWrapper ->
+//        val attrs: MutableMap<String, Attribute> =
+//            HashMap()
+//        attrs["label"] = DefaultAttribute.createAttribute(v.toString())
+//        attrs
+//    }
+//
+//    exporter.setEdgeAttributeProvider { e: EdgeWrapper ->
+//        val attrs: MutableMap<String, Attribute> =
+//            HashMap()
+//        attrs["label"] = DefaultAttribute.createAttribute(e.name)
+//        attrs["color"] = DefaultAttribute.createAttribute(edgeColor[e.label])
+//        attrs["style"] = DefaultAttribute.createAttribute(edgeStyle[e.label])
+//        attrs
+//    }
+//    exporter.exportGraph(graalph, output)
+//}
 
-internal fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
-    val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
-        v.node?.id?.toString() ?: (v as PointsToNode).hashCode().toString()
-    }
-
-    exporter.setVertexAttributeProvider { v: NodeWrapper ->
-        val attrs: MutableMap<String, Attribute> =
-            HashMap()
-        attrs["label"] = DefaultAttribute.createAttribute(v.toString())
-        attrs
-    }
-
-    exporter.setEdgeAttributeProvider { e: EdgeWrapper ->
-        val attrs: MutableMap<String, Attribute> =
-            HashMap()
-        attrs["label"] = DefaultAttribute.createAttribute(e.name)
-        attrs["color"] = DefaultAttribute.createAttribute(edgeColor[e.label])
-        attrs["style"] = DefaultAttribute.createAttribute(edgeStyle[e.label])
-        attrs
-    }
-    exporter.exportGraph(graalph, output)
-}
-
-internal fun getFieldEdgeName(node: NodeWrapper): String {
+internal fun getFieldEdgeName(node: AnalysisNode): String {
     if(node is GenericObjectWithField) return node.field
-    if(node.node is AccessFieldNode) return getFieldNameMethod(getFieldMethod(node.node)).toString()
-    return "is"
+    if(node !is AnalysisNode.IR) throw RuntimeException("unexpected operation on $node")
+    val graalNode = node.node()
+    if(graalNode is AccessFieldNode) return getFieldNameMethod(getFieldMethod(graalNode)).toString()
+    if(graalNode is PhiNode) return "is"
+    throw RuntimeException("unexpected operation on $node")
 }
