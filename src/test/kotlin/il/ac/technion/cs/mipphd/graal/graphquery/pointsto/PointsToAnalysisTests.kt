@@ -211,8 +211,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::anyHolder.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
-//        assert(graph.vertexSet().filter { it.isType("AllocatedObjectNode") }.size == 3)
     }
 
     @Test
@@ -221,7 +219,14 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::anyHolderVariant.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
+    }
+
+    @Test
+    fun `get augmented graal graph of anyHolderVariant`() {
+        println("# anyHolderVariant")
+        val analysis = PointsToAnalysis(::anyHolderVariant.javaMethod)
+        openGraph(analysis.augmentedGraalIRGraph.export())
+        println()
     }
 
     @Test
@@ -230,7 +235,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::anyHolder2.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
     }
 
     @Test
@@ -239,7 +243,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::anyHolder3.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
     }
 
 
@@ -249,7 +252,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::addToBst.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
     }
 
 //    @Test
@@ -268,7 +270,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::binTreeSimple.javaMethod)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
     }
 
     @Test
@@ -277,7 +278,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::binTreeCycleWithLoopUnrolling.javaMethod, SummaryKeyByNodeSourcePos)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
     }
 
     @Test
@@ -298,8 +298,6 @@ class PointsToAnalysisTests {
         val analysis = PointsToAnalysis(::binTreeCycle.javaMethod, SummaryKeyByNodeSourcePos)
         openGraph(analysis.toString())
         println()
-        val graph = analysis.pointsToGraph
-//        assert(3 == graph.vertexSet().filter { it.isType("AllocatedObjectNode") }.size)
     }
 
     @Test

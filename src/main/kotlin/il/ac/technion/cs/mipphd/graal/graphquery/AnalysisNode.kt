@@ -19,8 +19,7 @@ sealed class AnalysisNode private constructor() {
     class IR(private val wrappedNode: WrappedIRNodeImpl) : AnalysisNode(), WrappedIRNode by wrappedNode {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
-
-            other as IR
+            if (other !is IR) return false
 
             if (wrappedNode != other.wrappedNode) return false
 

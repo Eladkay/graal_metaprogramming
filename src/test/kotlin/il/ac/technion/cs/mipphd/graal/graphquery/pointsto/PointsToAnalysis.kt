@@ -7,18 +7,19 @@ import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.calc.FloatingNode
 import org.graalvm.compiler.nodes.java.LoadFieldNode
 import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode
-import java.io.StringWriter
+import org.jgrapht.graph.AbstractBaseGraph
 import java.lang.reflect.Method
 
 open class PointsToAnalysis(
     graal: AnalysisGraph,
     private val summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity,
-    val addAssociations: Boolean = true,
+    private val addAssociations: Boolean = true,
     nopNodes: Collection<String> = DEFAULT_NOP_NODES,
     notValueNodes: Collection<String> = DEFAULT_NOT_VALUE_NODES
-) :
-    QueryExecutor<AssociationInformation>(graal, { AssociationInformation() }) {
+) : QueryExecutor<AssociationInformation>(graal, { AssociationInformation() }) {
 
+    @Suppress("UNCHECKED_CAST", "MemberVisibilityCanBePrivate")
+    protected val graphWithPointsTo = graal.clone() as AbstractBaseGraph<AnalysisNode, AnalysisEdge>
     private val summaries = mutableMapOf<Any, PointsToNode>()
     private val associations = mutableMapOf<AnalysisNode.IR, PointsToNode>()
     protected fun getEquivalentNode(nodeWrapper: AnalysisNode): AnalysisNode {
@@ -86,6 +87,11 @@ digraph G {
         val storeNode = captureGroups["store"]!!.first()
         val equivNode = getEquivalentNode(storeNode)
         state.getOrPut(equivNode) { AssociationInformation() }.storedValues.addAll(captureGroups["value"]!!.map(::getEquivalentNode))
+        graphWithPointsTo.addVertex(equivNode)
+        captureGroups["value"]!!.map(::getEquivalentNode).forEach {
+            graphWithPointsTo.addVertex(it)
+            graphWithPointsTo.addEdge(equivNode, it, PointsToEdge("stores"))
+        }
     }
     val assocQuery by WholeMatchQuery(
         """
@@ -106,11 +112,17 @@ digraph G {
                 ::getEquivalentNode
             )
         )
+        graphWithPointsTo.addVertex(equivNode)
+        captureGroups["value"]!!.map(::getEquivalentNode).forEach {
+            graphWithPointsTo.addVertex(it)
+            graphWithPointsTo.addEdge(equivNode, it, PointsToEdge("objects"))
+        }
     }
 
     constructor(method: Method?, summaryFunc: SummaryKeyFunction = SummaryKeyByNodeIdentity, addAssociations: Boolean = true)
             : this(AnalysisGraph.fromIR(GraalIRGraph.fromGraal(methodToGraph.getCFG(method!!))), summaryFunc, addAssociations)
 
+    @Suppress("MemberVisibilityCanBePrivate")
     val pointsToGraph: AnalysisGraph by lazy {
         val results = iterateUntilFixedPoint().toList()
 
@@ -166,7 +178,7 @@ digraph G {
             // association edges
             val associationNodes = associations.keys.union(associations.values)
             val associationEdges = associations.map { (from, to) ->
-                Triple(from, to, PointsToEdge("represents"))
+                Triple(to, from, PointsToEdge("represents"))
             }
             associationNodes.forEach(graph::addVertex)
             associationEdges.forEach { graph.addEdge(it.first, it.second, it.third) }
@@ -174,10 +186,18 @@ digraph G {
         graph
     }
 
+    val augmentedGraalIRGraph: AnalysisGraph get() {
+        val graph = AnalysisGraph()
+        graphWithPointsTo.vertexSet().forEach(graph::addVertex)
+        val edges = graphWithPointsTo.vertexSet().flatMap { n1 -> graphWithPointsTo.vertexSet().map { n2 -> n1 to n2 } }
+            .filter { graphWithPointsTo.containsEdge(it.first, it.second) }
+            .map { Triple(it.first, it.second, graphWithPointsTo.getEdge(it.first, it.second)) }
+        edges.forEach { graph.addEdge(it.first, it.second, cloneEdge(it.third)) }
+        return graph
+    }
+
     override fun toString(): String {
-        val sw = StringWriter()
-        // writeQueryInternal(pointsToGraph, sw) todo
-        return sw.buffer.toString()
+        return pointsToGraph.export()
     }
 
 }

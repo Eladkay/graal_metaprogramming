@@ -1,6 +1,7 @@
 package il.ac.technion.cs.mipphd.graal
 
 import il.ac.technion.cs.mipphd.graal.graphquery.*
+import il.ac.technion.cs.mipphd.graal.graphquery.pointsto.binTreeCycle
 import il.ac.technion.cs.mipphd.graal.utils.GraalIRGraph
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
 import org.graalvm.compiler.nodes.ValueNode

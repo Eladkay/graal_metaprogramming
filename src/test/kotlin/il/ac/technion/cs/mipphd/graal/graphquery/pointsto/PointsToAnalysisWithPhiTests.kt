@@ -99,6 +99,7 @@ fun phiTest5(any: Any?): Any {
     return first
 }
 
+// todo: multiple functions with connecting edges (interprocedual analysis)
 class PointsToAnalysisWithPhiTests {
 
     val methodToGraph = MethodToGraph()
@@ -124,7 +125,7 @@ class PointsToAnalysisWithPhiTests {
         val ret = AnalysisGraph()
         nodes.forEach(ret::addVertex)
         edges.forEach {
-            ret.addEdge(it.first, it.second, it.third.clone() as AnalysisEdge)
+            ret.addEdge(it.first, it.second, cloneEdge(it.third))
         }
         return ret
     }
@@ -134,36 +135,34 @@ class PointsToAnalysisWithPhiTests {
         val method = ::phiTest1.javaMethod
         val graph = methodToGraph.getCFG(method)
         val adapter = filterGraph<PhiNode>(AnalysisGraph.fromIR(GraalIRGraph.fromGraal(graph)))
-        val writer = StringWriter()
-//        adapter.exportQuery(writer) todo
-        openGraph(writer.buffer.toString())
+        openGraph(adapter.export())
     }
 
     @Test
     fun `get pointsto graph with phi for phiTest1`() {
         println("# phiTest1")
-        val analysis = FlowSensitivePointsToAnalysis(::phiTest1.javaMethod)
+        val analysis = PointsToAnalysisWithPhi(::phiTest1.javaMethod)
         openGraph(analysis.toString())
     }
 
     @Test
     fun `get pointsto graph with phi for phiTest2`() {
         println("# phiTest2")
-        val analysis = FlowSensitivePointsToAnalysis(::phiTest2.javaMethod)
+        val analysis = PointsToAnalysisWithPhi(::phiTest2.javaMethod)
         openGraph(analysis.toString())
     }
 
     @Test
     fun `get pointsto graph with phi for testSelfAssignment`() {
         println("# testSelfAssignment")
-        val analysis = FlowSensitivePointsToAnalysis(::testSelfAssignment.javaMethod)
+        val analysis = PointsToAnalysisWithPhi(::testSelfAssignment.javaMethod)
         openGraph(analysis.toString())
     }
 
     @Test
     fun `get pointsto graph with phi for phiTest3`() {
         println("# phiTest3")
-        val analysis = FlowSensitivePointsToAnalysis(::phiTest3.javaMethod, summaryFunc = SummaryKeyByNodeSourcePosOrIdentity)
+        val analysis = PointsToAnalysisWithPhi(::phiTest3.javaMethod, summaryFunc = SummaryKeyByNodeSourcePosOrIdentity)
         openGraph(analysis.toString())
     }
 
@@ -172,15 +171,13 @@ class PointsToAnalysisWithPhiTests {
         val method = ::phiTest3.javaMethod
         val graph = methodToGraph.getCFG(method)
         val adapter = filterGraph<FrameState>(AnalysisGraph.fromIR(GraalIRGraph.fromGraal(graph)))
-        val writer = StringWriter()
-//        adapter.exportQuery(writer) todo
-        openGraph(writer.buffer.toString())
+        openGraph(adapter.export())
     }
 
     @Test
     fun `get pointsto graph with phi for phiTest4`() {
         println("# phiTest3")
-        val analysis = FlowSensitivePointsToAnalysis(::phiTest4.javaMethod)
+        val analysis = PointsToAnalysisWithPhi(::phiTest4.javaMethod)
         openGraph(analysis.toString())
     }
 
@@ -189,15 +186,13 @@ class PointsToAnalysisWithPhiTests {
         val method = ::phiTest4.javaMethod
         val graph = methodToGraph.getCFG(method)
         val adapter = filterGraph<FixedNode>(AnalysisGraph.fromIR(GraalIRGraph.fromGraal(graph)))
-        val writer = StringWriter()
-//        adapter.exportQuery(writer) todo
-        openGraph(writer.buffer.toString())
+        openGraph(adapter.export())
     }
 
     @Test
     fun `get pointsto graph with phi for phiTest5`() {
         println("# phiTest3")
-        val analysis = FlowSensitivePointsToAnalysis(::phiTest5.javaMethod)
+        val analysis = PointsToAnalysisWithPhi(::phiTest5.javaMethod)
         openGraph(analysis.toString())
     }
 

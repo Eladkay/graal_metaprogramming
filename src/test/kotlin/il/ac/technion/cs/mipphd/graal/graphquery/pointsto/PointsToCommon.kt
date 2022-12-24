@@ -2,11 +2,17 @@ package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
 import il.ac.technion.cs.mipphd.graal.SourcePosTool
 import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisEdge
+import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisGraph
 import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisNode
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
+import il.ac.technion.cs.mipphd.graal.utils.WrappedIREdge
 import org.graalvm.compiler.nodes.PhiNode
 import org.graalvm.compiler.nodes.ValueNode
 import org.graalvm.compiler.nodes.java.AccessFieldNode
+import org.jgrapht.nio.Attribute
+import org.jgrapht.nio.DefaultAttribute
+import org.jgrapht.nio.dot.DOTExporter
+import java.io.StringWriter
 
 internal val methodToGraph = MethodToGraph()
 internal val accessFieldNodeClass = Class.forName("org.graalvm.compiler.nodes.java.AccessFieldNode")
@@ -98,40 +104,6 @@ object SummaryKeyByNodeSourcePosOrIdentity : SummaryKeyFunction {
     }
 }
 
-//internal val edgeColor = mapOf(
-//    EdgeWrapper.DATA to "blue",
-//    EdgeWrapper.CONTROL to "red",
-//    EdgeWrapper.ASSOCIATED to "black"
-//)
-//internal val edgeStyle = mapOf(
-//    EdgeWrapper.DATA to "",
-//    EdgeWrapper.CONTROL to "",
-//    EdgeWrapper.ASSOCIATED to "dashed"
-//)
-//
-//internal fun writeQueryInternal(graalph: GraalAdapter, output: StringWriter) {
-//    val exporter = DOTExporter<NodeWrapper, EdgeWrapper> { v: NodeWrapper ->
-//        v.node?.id?.toString() ?: (v as PointsToNode).hashCode().toString()
-//    }
-//
-//    exporter.setVertexAttributeProvider { v: NodeWrapper ->
-//        val attrs: MutableMap<String, Attribute> =
-//            HashMap()
-//        attrs["label"] = DefaultAttribute.createAttribute(v.toString())
-//        attrs
-//    }
-//
-//    exporter.setEdgeAttributeProvider { e: EdgeWrapper ->
-//        val attrs: MutableMap<String, Attribute> =
-//            HashMap()
-//        attrs["label"] = DefaultAttribute.createAttribute(e.name)
-//        attrs["color"] = DefaultAttribute.createAttribute(edgeColor[e.label])
-//        attrs["style"] = DefaultAttribute.createAttribute(edgeStyle[e.label])
-//        attrs
-//    }
-//    exporter.exportGraph(graalph, output)
-//}
-
 internal fun getFieldEdgeName(node: AnalysisNode): String {
     if(node is GenericObjectWithField) return node.field
     if(node !is AnalysisNode.IR) throw RuntimeException("unexpected operation on $node")
@@ -139,4 +111,15 @@ internal fun getFieldEdgeName(node: AnalysisNode): String {
     if(graalNode is AccessFieldNode) return getFieldNameMethod(getFieldMethod(graalNode)).toString()
     if(graalNode is PhiNode) return "is"
     throw RuntimeException("unexpected operation on $node")
+}
+
+internal fun cloneEdge(edge: AnalysisEdge): AnalysisEdge {
+    return when(edge) {
+        is AnalysisEdge.Association -> AnalysisEdge.Association(edge.label)
+        is AnalysisEdge.Control -> AnalysisEdge.Control(edge.label)
+        is AnalysisEdge.Phi -> AnalysisEdge.Phi(edge.label, edge.from)
+        is AnalysisEdge.PureData -> AnalysisEdge.PureData(edge.label)
+        AnalysisEdge.Default -> edge
+        is AnalysisEdge.Extra -> PointsToEdge(edge.label) /* todo */
+    }
 }

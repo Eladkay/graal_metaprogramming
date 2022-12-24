@@ -1,6 +1,5 @@
 package il.ac.technion.cs.mipphd.graal.graphquery.pointsto
 
-import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisEdge
 import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisGraph
 import il.ac.technion.cs.mipphd.graal.graphquery.AnalysisNode
 import il.ac.technion.cs.mipphd.graal.utils.MethodToGraph
@@ -34,7 +33,7 @@ class FlowSensitivePointsToAnalysisTests {
         val ret = AnalysisGraph()
         nodes.forEach(ret::addVertex)
         edges.forEach {
-            ret.addEdge(it.first, it.second, it.third.clone() as AnalysisEdge)
+            ret.addEdge(it.first, it.second, cloneEdge(it.third))
         }
         return ret
     }
